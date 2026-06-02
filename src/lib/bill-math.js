@@ -17,6 +17,7 @@ export function computeBill(items, opts = {}) {
   const {
     discount_pct = 0,
     comp_amount  = 0,
+    loyalty_redeemed_pkr = 0,
     service_charge,        // { enabled, rate_pct }
     tax,                   // { enabled, cash_rate_pct, card_rate_pct, wallet_rate_pct }
     tender = 'cash',       // dominant tender, used when no payment breakdown given
@@ -26,7 +27,8 @@ export function computeBill(items, opts = {}) {
   const subtotal = items.reduce((s, it) => s + lineTotal(it), 0);
   const discount = Math.round(subtotal * (discount_pct / 100));
   const comp     = Math.max(0, comp_amount);
-  const taxable  = Math.max(0, subtotal - discount - comp);
+  const loyalty  = Math.max(0, loyalty_redeemed_pkr);
+  const taxable  = Math.max(0, subtotal - discount - comp - loyalty);
 
   const service = service_charge?.enabled
     ? Math.round(taxable * ((service_charge.rate_pct || 0) / 100))
@@ -52,5 +54,5 @@ export function computeBill(items, opts = {}) {
   }
 
   const total = preTax + taxAmount;
-  return { subtotal, discount, comp, service, tax: taxAmount, total };
+  return { subtotal, discount, comp, loyalty, service, tax: taxAmount, total };
 }

@@ -12,8 +12,11 @@ import SettingsSheet from './components/SettingsSheet.jsx';
 import EODReport from './components/EODReport.jsx';
 import SignIn from './components/SignIn.jsx';
 import CustomerSheet from './components/CustomerSheet.jsx';
+import MenuEditor from './components/MenuEditor.jsx';
+import HouseAccountsSheet from './components/HouseAccountsSheet.jsx';
+import NonTableStartSheet from './components/NonTableStartSheet.jsx';
 import {
-  saveBill, saveBillItem, deleteBillItem, updateTable,
+  saveBill, saveBillItem, deleteBillItem, updateTable, saveCustomer,
 } from './data-layer/index.js';
 import ManagerPinModal from './components/ManagerPinModal.jsx';
 import BillHistorySheet from './components/BillHistorySheet.jsx';
@@ -41,9 +44,12 @@ function Shell() {
   const [tmSheet, setTmSheet] = useState({ open: false, mode: null, sourceTable: null });
   const [customerOpen, setCustomerOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
+  const [houseAccountsOpen, setHouseAccountsOpen] = useState(false);
   const [replaceContext, setReplaceContext] = useState(null); // line being replaced
   const [pendingReplace, setPendingReplace] = useState(null); // { line, newItem }
   const [activeNonTableBillId, setActiveNonTableBillId] = useState(null); // for takeaway/delivery
+  const [startSheet, setStartSheet] = useState({ open: false, mode: null });
 
   useEffect(() => {
     document.documentElement.dir = rtl ? 'rtl' : 'ltr';
@@ -98,7 +104,31 @@ function Shell() {
     }
   };
 
-  const startNonTableOrder = async (mode) => {
+  const startNonTableOrder = (mode) => setStartSheet({ open: true, mode });
+
+  const finishNonTableStart = async ({ phone, name, customer, address, scheduled_for }) => {
+    const mode = startSheet.mode;
+    // If a customer matched, use them. Otherwise create a stub so the order
+    // gets a customer record from the start (Seated guest data depends on it).
+    let cust = customer;
+    if (!cust && phone) {
+      cust = {
+        customer_id: 'CUS-' + phone.replace(/\D/g, '').slice(-9),
+        outlet_id: config.outlet_id,
+        phone,
+        name: name || '',
+        first_visit: nowISO(),
+        last_visit: nowISO(),
+        visit_count: 0,
+        total_spend_pkr: 0,
+        tags: '',
+        notes: '',
+        loyalty_points: 0,
+        house_account_balance: 0,
+      };
+      await saveCustomer(cust);
+    }
+    const labelBase = mode === 'takeaway' ? 'Takeaway' : 'Delivery';
     const b = {
       bill_id: newBillId(),
       outlet_id: config.outlet_id,
@@ -106,17 +136,23 @@ function Shell() {
       time_opened: nowISO(),
       time_closed: '',
       table: '',
-      table_label: mode === 'takeaway' ? 'Takeaway' : 'Delivery',
+      table_label: cust?.name ? `${labelBase} · ${cust.name}` : labelBase,
       pax: 0,
       service_mode: mode,
       server_id: currentUser.user_id,
       server_name: currentUser.name,
+      customer_id: cust?.customer_id || '',
+      customer_phone: cust?.phone || phone || '',
+      customer_name:  cust?.name  || name  || '',
+      delivery_address: address || '',
+      scheduled_for: scheduled_for || '',
       discount_pct: 0,
       comp_amount: 0,
       tip_pkr: 0,
       status: STATES.NEW,
     };
     await saveBill(b);
+    setStartSheet({ open: false, mode: null });
     setSelectedTableId(null);
     setActiveNonTableBillId(b.bill_id);
     setView('menu');
@@ -151,7 +187,12 @@ function Shell() {
 
   return (
     <div className="h-full w-full flex flex-col bg-paolas-bg">
-      <Header onOpenSettings={() => setSettingsOpen(true)} onOpenEOD={() => setEodOpen(true)} />
+      <Header
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenEOD={() => setEodOpen(true)}
+        onOpenMenuEditor={() => setMenuEditorOpen(true)}
+        onOpenHouseAccounts={() => setHouseAccountsOpen(true)}
+      />
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <div className="flex-1 flex flex-col">
@@ -231,6 +272,14 @@ function Shell() {
       <EODReport open={eodOpen} onClose={() => setEodOpen(false)} />
       <CustomerSheet open={customerOpen} onClose={() => setCustomerOpen(false)} bill={activeBill} />
       <BillHistorySheet open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <MenuEditor open={menuEditorOpen} onClose={() => setMenuEditorOpen(false)} />
+      <HouseAccountsSheet open={houseAccountsOpen} onClose={() => setHouseAccountsOpen(false)} />
+      <NonTableStartSheet
+        open={startSheet.open}
+        mode={startSheet.mode}
+        onClose={() => setStartSheet({ open: false, mode: null })}
+        onConfirm={finishNonTableStart}
+      />
 
       {/* Replace flow: approve via manager PIN then swap the line */}
       <ManagerPinModal

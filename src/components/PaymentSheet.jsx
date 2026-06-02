@@ -10,15 +10,27 @@ import { printReceipt } from '../lib/print.js';
 import { STATES } from '../lib/lifecycle.js';
 
 export default function PaymentSheet({ open, onClose, bill, onClosed }) {
-  const { billItems, payments: allPayments, tables, config, currentUser, refreshAll } = useApp();
+  const { billItems, payments: allPayments, tables, customers, config, currentUser, refreshAll } = useApp();
   const items = useMemo(() => bill ? billItems.filter((x) => x.bill_id === bill.bill_id) : [], [bill, billItems]);
 
   const [splits, setSplits] = useState([{ tender_type: 'cash', amount_pkr: 0 }]);
   const [tip, setTip] = useState(0);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [done, setDone] = useState(false);
+
+  // Attached customer (if any) and their loyalty balance — needed for the
+  // redemption row in the totals box.
+  const attachedCustomer = bill?.customer_id
+    ? customers.find((c) => c.customer_id === bill.customer_id)
+    : null;
+  const loyaltyAvailable = attachedCustomer?.loyalty_points || 0;
+  const pkrPerPoint = config.loyalty?.pkr_per_point || 1;
+  const redeemPoints = Math.min(Math.max(0, Math.floor(Number(pointsToRedeem) || 0)), loyaltyAvailable);
+  const redeemPkr    = redeemPoints * pkrPerPoint;
 
   const totalsPre = computeBill(items, {
     discount_pct: bill?.discount_pct, comp_amount: bill?.comp_amount,
+    loyalty_redeemed_pkr: redeemPkr,
     service_charge: config.service_charge, tax: config.tax,
     payments: splits.length && splits.some((s) => s.amount_pkr > 0) ? splits : null,
     tender: splits[0]?.tender_type || 'cash',
@@ -74,6 +86,8 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
       subtotal: totalsPre.subtotal,
       discount: totalsPre.discount,
       comp: totalsPre.comp,
+      loyalty_redeemed_pkr: totalsPre.loyalty,
+      loyalty_redeemed_points: redeemPoints,
       service_charge: totalsPre.service,
       tax: totalsPre.tax,
       tip_pkr: Number(tip || 0),
@@ -114,7 +128,7 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
         total_spend_pkr: (existing?.total_spend_pkr || 0) + grandTotal,
         tags: existing?.tags || '',
         notes: existing?.notes || '',
-        loyalty_points: (existing?.loyalty_points || 0) + earned,
+        loyalty_points: Math.max(0, (existing?.loyalty_points || 0) - redeemPoints + earned),
         house_account_balance: (existing?.house_account_balance || 0) + houseAddition,
       };
       await saveCustomer(next);
@@ -166,6 +180,8 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
         <div className="rounded-xl border border-paolas-border bg-paolas-bg p-4 text-sm">
           <div className="flex justify-between"><span>Subtotal</span><span>{formatPKR(totalsPre.subtotal)}</span></div>
           {totalsPre.discount > 0 && <div className="flex justify-between text-gray-400"><span>Discount</span><span>-{formatPKR(totalsPre.discount)}</span></div>}
+          {totalsPre.comp > 0 && <div className="flex justify-between text-gray-400"><span>Comp</span><span>-{formatPKR(totalsPre.comp)}</span></div>}
+          {totalsPre.loyalty > 0 && <div className="flex justify-between text-gray-400"><span>Loyalty ({redeemPoints} pts)</span><span>-{formatPKR(totalsPre.loyalty)}</span></div>}
           {totalsPre.service > 0 && <div className="flex justify-between text-gray-400"><span>Service</span><span>{formatPKR(totalsPre.service)}</span></div>}
           {totalsPre.tax > 0 && <div className="flex justify-between text-gray-400"><span>Tax</span><span>{formatPKR(totalsPre.tax)}</span></div>}
           <div className="flex justify-between border-t border-paolas-border pt-2 mt-2"><span>Subtotal</span><span>{formatPKR(totalsPre.total)}</span></div>
@@ -194,6 +210,30 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
             <span>Total due</span><span>{formatPKR(grandTotal)}</span>
           </div>
         </div>
+
+        {attachedCustomer && config.loyalty?.enabled && loyaltyAvailable > 0 && (
+          <div className="rounded-xl border border-paolas-border bg-paolas-bg p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-medium">Loyalty redemption</div>
+                <div className="text-xs text-gray-400">
+                  {attachedCustomer.name || attachedCustomer.phone} has <span className="text-white">{loyaltyAvailable}</span> points
+                  {' ('}1 pt = {formatPKR(pkrPerPoint)}{')'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={pointsToRedeem || ''}
+                  onChange={(e) => setPointsToRedeem(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  className="w-20 min-h-tap px-2 py-1 rounded bg-paolas-panel border border-paolas-border text-right text-sm"
+                />
+                <button onClick={() => setPointsToRedeem(loyaltyAvailable)} className="text-xs px-2 py-1 rounded bg-paolas-border">Use all</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-2">

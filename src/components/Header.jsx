@@ -1,6 +1,6 @@
 import { useApp } from '../state/AppContext.jsx';
 
-export default function Header({ onOpenSettings, onOpenEOD }) {
+export default function Header({ onOpenSettings, onOpenEOD, onOpenMenuEditor, onOpenHouseAccounts }) {
   const { sync, realtime, config, currentUser, signOut } = useApp();
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
@@ -32,6 +32,20 @@ export default function Header({ onOpenSettings, onOpenEOD }) {
             <span>{realtime.connected ? 'LAN sync' : 'LAN sync…'}</span>
           </div>
         )}
+        <button
+          onClick={onOpenMenuEditor}
+          className="hidden md:block min-h-tap px-3 py-2 rounded-lg bg-paolas-border text-sm hover:bg-paolas-border/70"
+          title="Menu admin (manager-gated)"
+        >
+          Menu
+        </button>
+        <button
+          onClick={onOpenHouseAccounts}
+          className="hidden md:block min-h-tap px-3 py-2 rounded-lg bg-paolas-border text-sm hover:bg-paolas-border/70"
+          title="Customer house-account balances"
+        >
+          House
+        </button>
         <button
           onClick={onOpenEOD}
           className="hidden md:block min-h-tap px-3 py-2 rounded-lg bg-paolas-border text-sm hover:bg-paolas-border/70"

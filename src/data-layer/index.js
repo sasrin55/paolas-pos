@@ -40,6 +40,14 @@ export async function saveMenuItem(item) {
   await enqueue('upsertMenu', item);
 }
 
+export async function deleteMenuItem(item_id) {
+  await ls.del('menu', item_id);
+  broadcast('menu', item_id, 'delete');
+  // Apps Script doesn't have a deleteMenu action; if you actually want to
+  // hard-delete from the Sheet, add one. For now we mark as unavailable to
+  // preserve historical bill references (BillItems hold their own snapshot).
+}
+
 export async function saveCustomer(c) {
   await ls.put('customers', c);
   broadcast('customers', c, 'put');
@@ -105,6 +113,38 @@ export async function savePayment(p) {
   await ls.put('payments', p);
   broadcast('payments', p, 'put');
   await enqueue('upsertPayment', p);
+}
+
+// Settle some amount against a customer's house-account balance. Creates a
+// settlement Payment row (not tied to a bill) and reduces the balance.
+export async function settleHouseAccount({ customer_id, outlet_id, tender_type, amount_pkr, payment_id, user_id, reason }) {
+  if (!customer_id || amount_pkr <= 0) return;
+  const cust = await ls.get('customers', customer_id);
+  if (!cust) return;
+  const settled = Math.min(amount_pkr, cust.house_account_balance || 0);
+  if (settled <= 0) return;
+  await savePayment({
+    payment_id,
+    bill_id: '',
+    customer_id,
+    outlet_id: outlet_id || cust.outlet_id,
+    tender_type,
+    amount_pkr: settled,
+    time: new Date().toISOString(),
+    is_settlement: true,
+  });
+  await saveCustomer({
+    ...cust,
+    house_account_balance: (cust.house_account_balance || 0) - settled,
+  });
+  await appendAudit({
+    time: new Date().toISOString(),
+    user_id: user_id || '',
+    action: 'house_account_settle',
+    bill_id: '',
+    reason: reason || '',
+    detail: `${cust.name || cust.phone}: ${settled} via ${tender_type}`,
+  });
 }
 
 export async function appendAudit(entry) {

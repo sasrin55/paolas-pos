@@ -35,7 +35,8 @@ export const DEFAULT_CONFIG = {
   sync_url: '',
   loyalty: {
     enabled: true,
-    points_per_pkr: 0.01,  // 1 point per Rs 100
+    points_per_pkr: 0.01,    // earn: 1 point per Rs 100
+    pkr_per_point:  1,       // redeem: 1 point = Rs 1
   },
   sheets: {
     endpoint: '',

@@ -28,6 +28,8 @@ export default function OrderPanel({
   const [pendingVoidBill, setPendingVoidBill] = useState(false);
   const [discountPctInput, setDiscountPctInput] = useState('');
   const [pendingDiscount, setPendingDiscount] = useState(null);
+  const [compAmountInput, setCompAmountInput] = useState('');
+  const [pendingComp, setPendingComp] = useState(null);         // PKR amount
   const [pendingOverride, setPendingOverride] = useState(null); // { line, new_price }
   const [overrideEditor, setOverrideEditor] = useState(null);   // { line, draft }
   const [pendingReduce, setPendingReduce] = useState(null);     // { line, new_qty }
@@ -232,6 +234,20 @@ export default function OrderPanel({
           >
             Apply discount
           </button>
+          <input
+            value={compAmountInput}
+            onChange={(e) => setCompAmountInput(e.target.value)}
+            placeholder="Comp Rs"
+            type="number"
+            className="min-h-tap px-3 rounded-xl bg-paolas-bg border border-paolas-border text-sm"
+          />
+          <button
+            onClick={() => setPendingComp(compAmountInput)}
+            disabled={!bill || !compAmountInput}
+            className="min-h-tap rounded-xl bg-paolas-border text-sm font-medium disabled:opacity-40"
+          >
+            Apply comp
+          </button>
           <button
             onClick={onSplit}
             disabled={!bill || items.length === 0}
@@ -293,6 +309,22 @@ export default function OrderPanel({
         bill_id={bill?.bill_id || ''}
         detail={pendingDiscount ? `${pendingDiscount}% on ${table?.label || bill?.bill_id}` : ''}
         onApproved={applyDiscount}
+      />
+      <ManagerPinModal
+        open={pendingComp !== null}
+        onClose={() => setPendingComp(null)}
+        action="comp"
+        bill_id={bill?.bill_id || ''}
+        detail={pendingComp ? `Comp Rs ${pendingComp} on ${table?.label || bill?.bill_id}` : ''}
+        requireReason
+        onApproved={async () => {
+          if (!bill) return;
+          const amt = Math.max(0, Number(pendingComp) || 0);
+          await saveBill({ ...bill, comp_amount: amt });
+          setPendingComp(null);
+          setCompAmountInput('');
+          await refreshAll();
+        }}
       />
 
       {/* Reduce qty editor */}
