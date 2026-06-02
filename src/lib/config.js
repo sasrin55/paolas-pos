@@ -1,6 +1,10 @@
 // Configurable bill-math + integration settings. Persisted in IndexedDB
 // `meta` store under key 'config'. Default below is the empty-state shape.
 
+// Multi-outlet seed. Paolas is a single outlet for v1 — outlet_id is on every
+// row that needs it so adding outlets later is config, not a migration.
+export const DEFAULT_OUTLET_ID = 'PAOLAS';
+
 export const DEFAULT_CONFIG = {
   outlet_id: DEFAULT_OUTLET_ID,
   restaurant: {
@@ -22,6 +26,10 @@ export const DEFAULT_CONFIG = {
   currency: 'PKR',
   // i18n: 'en' v1. Scaffolded to add 'ur' later via src/lib/strings/ur.json.
   locale: 'en',
+  // PIN bypass for exploration/dev. When true: auto-signs-in as the first
+  // manager and ManagerPinModal auto-approves every gate (still audit-logged
+  // with reason "(pins disabled)"). Flip OFF before going live.
+  auth_disabled: true,
   // Real-time peer sync (Phase 12). Run `npm run sync` on the cashier till,
   // then paste ws://<till-ip>:3001 here on the handhelds.
   sync_url: '',
@@ -67,10 +75,6 @@ export const TENDER_TAX_KEY = {
 };
 
 export const SERVICE_MODES = ['dine-in', 'takeaway', 'delivery'];
-
-// Multi-outlet seed. Paolas is a single outlet for v1 — outlet_id is on every
-// row that needs it so adding outlets later is config, not a migration.
-export const DEFAULT_OUTLET_ID = 'PAOLAS';
 
 export function mergeConfig(saved) {
   if (!saved) return DEFAULT_CONFIG;

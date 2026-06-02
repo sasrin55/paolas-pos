@@ -119,14 +119,13 @@ Paolas day-one setup: **1 cashier till + 1–2 waiter handhelds**.
 
 ## Wiring the Sheets backend
 
-1. Create a Google Sheet with tabs matching the data model.
-2. Extensions → Apps Script. Paste a `doPost` that:
-   - Reads `x-shared-secret` header.
-   - Parses `{ action, payload }`.
-   - Routes to `upsertMenu / upsertTable / upsertCustomer / upsertBill / upsertBillItem / upsertPayment / upsertShift / appendAudit`.
-   - Returns `{ ok: true }` or `{ ok: false, error }`.
-3. Deploy as Web App, "Execute as: me", "Access: anyone with the link".
-4. Settings → Sheets sync: paste the `/exec` URL + your shared secret. **Drain outbox now** to test.
+The Apps Script backend code is in [sheets-backend/Code.gs](sheets-backend/Code.gs) with full setup instructions in [sheets-backend/README.md](sheets-backend/README.md). Quick summary:
+
+1. New Google Sheet → Extensions → Apps Script → paste `Code.gs`.
+2. Set `SHARED_SECRET` to a random string.
+3. Run `setupTabs()` once to create all 11 tabs.
+4. Deploy as Web App ("Execute as: me", "Anyone with the link") → copy `/exec` URL.
+5. POS Settings → Sheets sync → paste URL + the same secret → **Drain outbox now**.
 
 ## Pakistan specifics
 

@@ -24,11 +24,30 @@ export default function ManagerPinModal({
   open, onClose, action, bill_id = '', detail = '',
   requireReason = false, onApproved,
 }) {
-  const { verifyManagerPin } = useApp();
+  const { verifyManagerPin, users, config } = useApp();
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
 
   useEffect(() => { if (open) { setReason(''); setError(''); } }, [open]);
+
+  // Dev bypass: auto-approve as first manager when auth_disabled is on.
+  useEffect(() => {
+    if (!open || !config?.auth_disabled) return;
+    const mgr = users.find((u) => u.role === 'manager') || users[0];
+    if (!mgr) return;
+    (async () => {
+      await appendAudit({
+        time: new Date().toISOString(),
+        user_id: mgr.user_id,
+        action,
+        bill_id,
+        reason: '(pins disabled)',
+        detail,
+      });
+      onApproved?.(mgr, '(pins disabled)');
+      onClose?.();
+    })();
+  }, [open, config?.auth_disabled, users, action, bill_id, detail, onApproved, onClose]);
 
   const suggestions = REASON_SUGGESTIONS[action] || [];
 
@@ -51,6 +70,9 @@ export default function ManagerPinModal({
     onApproved?.(mgr, reason.trim());
     onClose?.();
   };
+
+  // Hide the modal entirely when auth is disabled (dev mode).
+  if (config?.auth_disabled) return null;
 
   return (
     <Modal open={open} onClose={onClose} title={`Manager approval — ${action.replace(/_/g, ' ')}`}>

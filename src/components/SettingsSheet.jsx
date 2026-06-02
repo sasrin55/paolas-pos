@@ -58,6 +58,17 @@ export default function SettingsSheet({ open, onClose }) {
           <Field type="number" label="Rate %" value={local.service_charge.rate_pct ?? ''} onChange={(v) => update('service_charge.rate_pct', num(v))} />
         </Section>
 
+        <Section title="Authentication">
+          <Toggle
+            label="Disable PINs (dev mode — auto-sign-in + auto-approve manager gates)"
+            value={!!local.auth_disabled}
+            onChange={(v) => update('auth_disabled', v)}
+          />
+          <p className="text-xs text-amber-300">
+            Turn OFF before launch. While ON, every gated action is still audit-logged with reason "(pins disabled)".
+          </p>
+        </Section>
+
         <Section title="Language">
           <label className="block">
             <span className="text-xs text-gray-400">UI language</span>

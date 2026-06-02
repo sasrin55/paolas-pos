@@ -34,6 +34,14 @@ export function AppProvider({ children }) {
 
   const [currentUser, setCurrentUser] = useState(null);
 
+  // Auto-sign-in as manager when auth_disabled is on (dev mode).
+  useEffect(() => {
+    if (currentUser || !users.length) return;
+    if (!config.auth_disabled) return;
+    const mgr = users.find((u) => u.role === 'manager') || users[0];
+    if (mgr) setCurrentUser(mgr);
+  }, [users, config.auth_disabled, currentUser]);
+
   const refreshAll = useCallback(async () => {
     const [m, mg, mods, t, u, cust, b, bi, p, a] = await Promise.all([
       dl.listMenu(), dl.listModifierGroups(), dl.listModifiers(),
@@ -51,6 +59,12 @@ export function AppProvider({ children }) {
       await dl.seedIfEmpty(seed);
       const saved = await dl.getMeta('config');
       const cfg = mergeConfig(saved?.value);
+      // Default-on PIN bypass for v4 dev. Persist on first boot so it's
+      // visible in Settings; remove there to go live.
+      if (saved?.value?.auth_disabled === undefined) {
+        cfg.auth_disabled = true;
+        await dl.setMeta('config', cfg);
+      }
       setConfig(cfg);
       if (cfg.locale) { setLocale(cfg.locale); setLocaleState(cfg.locale); }
       await refreshAll();

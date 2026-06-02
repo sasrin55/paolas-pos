@@ -82,29 +82,33 @@ export default function OrderPanel({
     await refreshAll();
   };
 
-  if (!table) {
+  if (!table && !bill) {
     return (
       <aside className="w-full md:w-[420px] bg-paolas-panel border-l border-paolas-border flex flex-col">
         <div className="px-5 py-4 border-b border-paolas-border">
           <h2 className="text-lg font-semibold">Order</h2>
-          <p className="text-sm text-gray-400 mt-1">No table selected</p>
+          <p className="text-sm text-gray-400 mt-1">No order open</p>
         </div>
         <div className="flex-1 px-5 py-4 text-sm text-gray-500 italic">
-          Tap a table on the left to open an order.
+          Tap a table, or start a takeaway/delivery order from the floor.
         </div>
       </aside>
     );
   }
 
+  // Display label: table label, or service-mode for non-table bills.
+  const displayLabel = table?.label || bill?.table_label || (bill ? bill.service_mode : '');
+  const displayZone  = table?.zone  || (bill?.service_mode || '');
+
   return (
     <aside className="w-full md:w-[420px] bg-paolas-panel border-l border-paolas-border flex flex-col">
       <div className="px-5 py-4 border-b border-paolas-border">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{table.label}</h2>
+          <h2 className="text-lg font-semibold">{displayLabel}</h2>
           {bill && <span className="text-[11px] text-gray-400">{bill.bill_id}</span>}
         </div>
         <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
-          <span className="text-gray-400">{table.zone}</span>
+          <span className="text-gray-400">{displayZone}</span>
           {bill ? (
             <>
               <span>·</span>
