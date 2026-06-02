@@ -2,6 +2,8 @@
 
 Touch-first, **offline-first, real-time** Point-of-Sale for Paolas restaurant. Part of the [Seated](https://seated.pk) platform — every closed bill writes to a Google Sheet and to a **per-customer record** so it can later join reservation data (`Bills.table + Bills.date ↔ reservations`, plus the direct `Bills.customer_id ↔ Customers` link) to build guest spend profiles.
 
+Every bill is a **state machine** (`new → running → due → settled` plus six guarded exception transitions: **void / reduce / replace / refund / reprint / recall**). Every exception requires a manager PIN **and a reason**, and writes a row to the audit log. That single design choice is most of the theft control.
+
 React + Tailwind. Local data in IndexedDB. **Multi-device sync** over LAN WebSockets so handhelds + the cashier till + (later) the kitchen display see writes live. Outbox queue syncs to Google Sheets via an Apps Script web app.
 
 ## Run
@@ -31,17 +33,17 @@ On the **waiter handhelds**, open Settings → Real-time sync, paste `ws://<till
 
 ## What's in v1 (all Tier-1 features)
 
-- **Floor view** — tables, status (free / occupied / bill-requested), table-action menu (transfer / merge / force-free).
+- **Floor view** — tables, status (free / occupied / bill-requested), table-action menu (transfer / merge / force-free). **+ Takeaway** and **+ Delivery** quick-start buttons open a non-table bill in the right service mode. **Today's bills** opens the history sheet (Reprint / Refund / Recall).
 - **Menu** — categories, modifier groups (size/toppings/spice/temp/doneness), **item images**, **long-press 86 toggle** (manager-PIN for waiters, audit-logged).
 - **Order entry** — qty, modifiers, kitchen note, **price override** (manager-PIN, audit-logged), live total.
 - **KOT print** — 80mm thermal CSS; only un-fired lines print.
 - **Bill math** — pure (`src/lib/bill-math.js`), tender-aware tax.
 - **Customer attach** — type a phone, live search, see prior visits / spend / loyalty points; attach to bill. New customer? Create + attach in one tap.
 - **Customer record updates on bill close** — visit_count++, total_spend_pkr+=, last_visit, loyalty points earned per Settings rate.
-- **Multi-tender payments** — cash / card / easypaisa / JazzCash / Raast. Split tender. Tax recomputed tender-weighted.
+- **Multi-tender payments** — cash / card / easypaisa / JazzCash / Raast / online-transfer / **house-account** (running tab on a customer). Split tender, **tips** (quick-pick % or custom), tax recomputed tender-weighted.
 - **Receipt** — 80mm thermal, restaurant/GST, lines, breakdown, tender, **FBR/PRA invoice slot** (auto-generated until live integration toggled on).
 - **Split / merge / transfer** — full flows, audit-logged.
-- **Sign-in + manager PIN** — SHA-256 + salt; voids, discounts, 86, price-override, force-free, EOD close all gated.
+- **Sign-in + manager PIN with reason** — every gated action (**void item, void bill, reduce, replace, refund, reprint, recall**, discount, comp, 86, price override, force-free, EOD close) prompts for a one-line reason that's written to the audit log next to the PIN-approver's user id.
 - **Settings** — restaurant info, tender-aware tax (cash/card/wallet), service charge, loyalty rate, language, LAN sync URL, Sheets endpoint + secret, FBR config.
 - **End-of-day + cash reconciliation** — today's closed bills, by-tender, void count, expected cash vs counted, variance, print + audit-log close-day.
 - **Offline-first** — full IndexedDB local-first; outbox drains to Sheets when online; header shows `Online / Offline · N queued`.
@@ -87,12 +89,12 @@ On the **waiter handhelds**, open Settings → Real-time sync, paste `ws://<till
 - **modifierGroups** + **Modifiers** (split for clean joins)
 - **Tables**: `table_id, label, capacity, zone, status, active_bill_id`
 - **Users**: `user_id, name, role, salt, pin_hash`
-- **Customers**: `customer_id, phone, name, first_visit, last_visit, visit_count, total_spend_pkr, tags, notes, loyalty_points` ← **the Seated record**
-- **Bills**: `bill_id, date, time_opened, time_closed, table, table_label, pax, service_mode, server_id, server_name, customer_id, customer_phone, customer_name, subtotal, discount, comp, service_charge, tax, total, status, fbr_invoice_number`
+- **Customers**: `customer_id, outlet_id, phone, name, first_visit, last_visit, visit_count, total_spend_pkr, tags, notes, loyalty_points, house_account_balance` ← **the Seated record**
+- **Bills**: `bill_id, outlet_id, date, time_opened, time_closed, table, table_label, pax, service_mode, server_id, server_name, customer_id, customer_phone, customer_name, subtotal, discount, comp, service_charge, tax, tip_pkr, total, status, fbr_invoice_number` — `status ∈ {new, running, due, settled, void}`
 - **BillItems**: `line_id, bill_id, item_id, item_name, qty, unit_price, modifiers, line_total, note, sent_to_kitchen, voided_by, price_overridden`
-- **Payments**: `payment_id, bill_id, tender_type, amount_pkr, time`
+- **Payments**: `payment_id, bill_id, outlet_id, tender_type, amount_pkr, time, is_refund` — `tender_type ∈ {cash, card, easypaisa, jazzcash, raast, online-transfer, house-account}`; refunds are negative-amount rows.
 - **Shifts**: `shift_id, user_id, clock_in, clock_out, opening_cash, closing_cash, sales_total` (table exists; UI is Tier 2)
-- **AuditLog**: `log_id, time, user_id, action, bill_id, detail`
+- **AuditLog**: `log_id, time, user_id, action, bill_id, reason, detail` — `action ∈ {void_item, void_bill, reduce_item, replace_item, refund, reprint_receipt, recall_bill, apply_discount, comp, price_override, item_86d, item_unsuspended, table_force_free, table_transfer, table_merge, close_bill, eod_close}`. Multi-outlet: `outlet_id` lives on every row above so adding outlets later is config, not a migration.
 
 **Two joins downstream:**
 1. **Direct**: `Bills.customer_id → Customers` — guest profile, immediate.

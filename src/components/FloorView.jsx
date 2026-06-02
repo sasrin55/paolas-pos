@@ -13,7 +13,7 @@ const STATUS_LABEL = {
   bill_requested: 'Bill requested',
 };
 
-export default function FloorView({ selectedTableId, onSelectTable, onOpenOrder, onTransferRequest, onMergeRequest }) {
+export default function FloorView({ selectedTableId, onSelectTable, onOpenOrder, onTransferRequest, onMergeRequest, onStartTakeaway, onStartDelivery, onOpenHistory }) {
   const { tables, bills, billItems, currentUser, refreshAll } = useApp();
   const [actionTable, setActionTable] = useState(null);
 
@@ -22,9 +22,21 @@ export default function FloorView({ selectedTableId, onSelectTable, onOpenOrder,
 
   return (
     <section className="flex-1 p-4 md:p-6 overflow-auto">
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-xl font-semibold">Floor</h2>
         <p className="text-sm text-gray-400">{tables.length} tables · tap to open order</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={onStartTakeaway} className="min-h-tap px-4 py-2 rounded-lg bg-paolas-border text-sm font-medium">
+          + Takeaway
+        </button>
+        <button onClick={onStartDelivery} className="min-h-tap px-4 py-2 rounded-lg bg-paolas-border text-sm font-medium">
+          + Delivery
+        </button>
+        <button onClick={onOpenHistory} className="min-h-tap px-4 py-2 rounded-lg bg-paolas-border text-sm font-medium">
+          Today's bills
+        </button>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
         {tables.map((t) => {

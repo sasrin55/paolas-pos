@@ -122,11 +122,21 @@ export async function setMeta(key, value) {
 export async function seedIfEmpty(seed) {
   const seeded = await ls.get('meta', 'seeded');
   if (seeded?.value) {
-    // schema migration: backfill image_url on legacy menu rows if missing
+    // schema migration: backfill image_url + outlet_id on legacy rows
+    const outletId = seed.menu[0]?.outlet_id || 'PAOLAS';
     const menu = await ls.getAll('menu');
-    const fixed = menu.filter((m) => m.image_url === undefined)
-      .map((m) => ({ ...m, image_url: seed.menu.find((s) => s.item_id === m.item_id)?.image_url || '' }));
-    if (fixed.length) await ls.putMany('menu', fixed);
+    const menuFixes = menu.filter((m) => m.image_url === undefined || m.outlet_id === undefined)
+      .map((m) => ({
+        ...m,
+        outlet_id: m.outlet_id || outletId,
+        image_url: m.image_url ?? seed.menu.find((s) => s.item_id === m.item_id)?.image_url ?? '',
+      }));
+    if (menuFixes.length) await ls.putMany('menu', menuFixes);
+    for (const store of ['tables', 'users']) {
+      const rows = await ls.getAll(store);
+      const fixes = rows.filter((r) => r.outlet_id === undefined).map((r) => ({ ...r, outlet_id: outletId }));
+      if (fixes.length) await ls.putMany(store, fixes);
+    }
     return;
   }
   await ls.putMany('menu',           seed.menu);

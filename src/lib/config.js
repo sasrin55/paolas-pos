@@ -2,6 +2,7 @@
 // `meta` store under key 'config'. Default below is the empty-state shape.
 
 export const DEFAULT_CONFIG = {
+  outlet_id: DEFAULT_OUTLET_ID,
   restaurant: {
     name: 'Paolas',
     address: '',
@@ -41,16 +42,35 @@ export const DEFAULT_CONFIG = {
   },
 };
 
-export const TENDER_TYPES = ['cash', 'card', 'easypaisa', 'jazzcash', 'raast'];
+export const TENDER_TYPES = [
+  'cash', 'card', 'easypaisa', 'jazzcash', 'raast', 'online-transfer', 'house-account',
+];
 export const TENDER_LABEL = {
-  cash:      'Cash',
-  card:      'Card',
-  easypaisa: 'easypaisa',
-  jazzcash:  'JazzCash',
-  raast:     'Raast',
+  'cash':            'Cash',
+  'card':            'Card',
+  'easypaisa':       'easypaisa',
+  'jazzcash':        'JazzCash',
+  'raast':           'Raast',
+  'online-transfer': 'Online transfer',
+  'house-account':   'House account',
+};
+// Which tax rate slot applies to each tender. House-account defers payment,
+// so taxed at the digital rate by default — revisit when balance is settled.
+export const TENDER_TAX_KEY = {
+  'cash':            'cash_rate_pct',
+  'card':            'card_rate_pct',
+  'easypaisa':       'wallet_rate_pct',
+  'jazzcash':        'wallet_rate_pct',
+  'raast':           'wallet_rate_pct',
+  'online-transfer': 'wallet_rate_pct',
+  'house-account':   'card_rate_pct',
 };
 
 export const SERVICE_MODES = ['dine-in', 'takeaway', 'delivery'];
+
+// Multi-outlet seed. Paolas is a single outlet for v1 — outlet_id is on every
+// row that needs it so adding outlets later is config, not a migration.
+export const DEFAULT_OUTLET_ID = 'PAOLAS';
 
 export function mergeConfig(saved) {
   if (!saved) return DEFAULT_CONFIG;

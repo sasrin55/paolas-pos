@@ -7,12 +7,14 @@ import { TENDER_TYPES, TENDER_LABEL } from '../lib/config.js';
 import { newPaymentId, nowISO } from '../lib/id.js';
 import { saveBill, savePayment, updateTable, appendAudit, saveCustomer, getCustomer } from '../data-layer/index.js';
 import { printReceipt } from '../lib/print.js';
+import { STATES } from '../lib/lifecycle.js';
 
 export default function PaymentSheet({ open, onClose, bill, onClosed }) {
   const { billItems, payments: allPayments, tables, config, currentUser, refreshAll } = useApp();
   const items = useMemo(() => bill ? billItems.filter((x) => x.bill_id === bill.bill_id) : [], [bill, billItems]);
 
   const [splits, setSplits] = useState([{ tender_type: 'cash', amount_pkr: 0 }]);
+  const [tip, setTip] = useState(0);
   const [done, setDone] = useState(false);
 
   const totalsPre = computeBill(items, {
@@ -22,9 +24,15 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
     tender: splits[0]?.tender_type || 'cash',
   });
 
+  const grandTotal = totalsPre.total + Number(tip || 0);
+
   const paid = splits.reduce((s, x) => s + (Number(x.amount_pkr) || 0), 0);
-  const remaining = Math.max(0, totalsPre.total - paid);
-  const change = Math.max(0, paid - totalsPre.total);
+  const remaining = Math.max(0, grandTotal - paid);
+  const change = Math.max(0, paid - grandTotal);
+
+  // House-account special handling: needs a customer attached.
+  const usesHouseAccount = splits.some((s) => s.tender_type === 'house-account' && s.amount_pkr > 0);
+  const houseAccountBlocked = usesHouseAccount && !bill?.customer_id;
 
   if (!bill) return null;
 
@@ -40,7 +48,7 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
   } : { enabled: false };
 
   const closeBill = async () => {
-    if (paid < totalsPre.total) return;
+    if (paid < grandTotal || houseAccountBlocked) return;
     // Round splits to clear any change to the last tender
     const usedSplits = splits.map((s, i) => i === splits.length - 1
       ? { ...s, amount_pkr: s.amount_pkr - change }
@@ -52,6 +60,7 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
       await savePayment({
         payment_id: newPaymentId(),
         bill_id: bill.bill_id,
+        outlet_id: bill.outlet_id,
         tender_type: s.tender_type,
         amount_pkr: s.amount_pkr,
         time: nowISO(),
@@ -61,13 +70,14 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
     const closed = {
       ...bill,
       time_closed: nowISO(),
-      status: 'closed',
+      status: STATES.SETTLED,
       subtotal: totalsPre.subtotal,
       discount: totalsPre.discount,
       comp: totalsPre.comp,
       service_charge: totalsPre.service,
       tax: totalsPre.tax,
-      total: totalsPre.total,
+      tip_pkr: Number(tip || 0),
+      total: grandTotal,
       fbr_invoice_number: fbrForReceipt.invoice_number || '',
     };
     await saveBill(closed);
@@ -83,23 +93,29 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
       detail: `${formatPKR(totalsPre.total)} via ${usedSplits.filter((s) => s.amount_pkr > 0).map((s) => s.tender_type).join('+')}`,
     });
 
-    // Update the customer record (visit count, spend, loyalty) if attached.
+    // Update the customer record (visit count, spend, loyalty, house-account) if attached.
     if (closed.customer_id) {
       const existing = await getCustomer(closed.customer_id);
       const earned = config.loyalty?.enabled
-        ? Math.floor(totalsPre.total * (config.loyalty.points_per_pkr || 0))
+        ? Math.floor(grandTotal * (config.loyalty.points_per_pkr || 0))
         : 0;
+      // House-account amount adds to the running balance (they pay it later).
+      const houseAddition = usedSplits
+        .filter((s) => s.tender_type === 'house-account' && s.amount_pkr > 0)
+        .reduce((s, x) => s + x.amount_pkr, 0);
       const next = {
         customer_id: closed.customer_id,
+        outlet_id: bill.outlet_id,
         phone: existing?.phone || closed.customer_phone || '',
         name: existing?.name || closed.customer_name || '',
         first_visit: existing?.first_visit || nowISO(),
         last_visit: nowISO(),
         visit_count: (existing?.visit_count || 0) + 1,
-        total_spend_pkr: (existing?.total_spend_pkr || 0) + totalsPre.total,
+        total_spend_pkr: (existing?.total_spend_pkr || 0) + grandTotal,
         tags: existing?.tags || '',
         notes: existing?.notes || '',
         loyalty_points: (existing?.loyalty_points || 0) + earned,
+        house_account_balance: (existing?.house_account_balance || 0) + houseAddition,
       };
       await saveCustomer(next);
     }
@@ -128,17 +144,20 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
       footer={
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm">
-            <div>Due <span className="font-semibold text-white">{formatPKR(totalsPre.total)}</span></div>
+            <div>Due <span className="font-semibold text-white">{formatPKR(grandTotal)}</span></div>
             <div className="text-xs text-gray-400">
               Paid {formatPKR(paid)} · {remaining > 0 ? `Remaining ${formatPKR(remaining)}` : `Change ${formatPKR(change)}`}
             </div>
+            {houseAccountBlocked && (
+              <div className="text-xs text-red-400 mt-1">Attach a customer to use house-account.</div>
+            )}
           </div>
           <button
             onClick={closeBill}
-            disabled={paid < totalsPre.total}
+            disabled={paid < grandTotal || houseAccountBlocked}
             className="min-h-tap px-4 py-2 rounded-lg bg-paolas-accent font-semibold disabled:opacity-40"
           >
-            Close bill & print
+            Settle & print
           </button>
         </div>
       }
@@ -149,8 +168,30 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
           {totalsPre.discount > 0 && <div className="flex justify-between text-gray-400"><span>Discount</span><span>-{formatPKR(totalsPre.discount)}</span></div>}
           {totalsPre.service > 0 && <div className="flex justify-between text-gray-400"><span>Service</span><span>{formatPKR(totalsPre.service)}</span></div>}
           {totalsPre.tax > 0 && <div className="flex justify-between text-gray-400"><span>Tax</span><span>{formatPKR(totalsPre.tax)}</span></div>}
+          <div className="flex justify-between border-t border-paolas-border pt-2 mt-2"><span>Subtotal</span><span>{formatPKR(totalsPre.total)}</span></div>
+          <div className="flex items-center justify-between mt-2 gap-2">
+            <span>Tip</span>
+            <div className="flex items-center gap-2">
+              {[0, 0.05, 0.10, 0.15].map((pct) => (
+                <button
+                  key={pct}
+                  onClick={() => setTip(Math.round(totalsPre.total * pct))}
+                  className="text-xs px-2 py-1 rounded bg-paolas-border"
+                >
+                  {pct === 0 ? 'none' : `${Math.round(pct * 100)}%`}
+                </button>
+              ))}
+              <input
+                type="number"
+                value={tip || ''}
+                onChange={(e) => setTip(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="w-24 min-h-tap px-2 py-1 rounded bg-paolas-bg border border-paolas-border text-right text-sm"
+              />
+            </div>
+          </div>
           <div className="flex justify-between font-semibold border-t border-paolas-border pt-2 mt-2">
-            <span>Total</span><span>{formatPKR(totalsPre.total)}</span>
+            <span>Total due</span><span>{formatPKR(grandTotal)}</span>
           </div>
         </div>
 

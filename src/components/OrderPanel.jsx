@@ -4,27 +4,35 @@ import { formatPKR } from '../lib/format.js';
 import { computeBill, lineTotal } from '../lib/bill-math.js';
 import { SERVICE_MODES } from '../lib/config.js';
 import {
-  saveBill, saveBillItem, deleteBillItem,
+  saveBill, saveBillItem, deleteBillItem, updateTable,
 } from '../data-layer/index.js';
 import ManagerPinModal from './ManagerPinModal.jsx';
 import { printKOT } from '../lib/print.js';
+import { STATES } from '../lib/lifecycle.js';
 
 export default function OrderPanel({
-  selectedTableId, onOpenMenu, onSplit, onPay, onAttachCustomer,
+  selectedTableId, activeBillId, onOpenMenu, onSplit, onPay, onAttachCustomer, onReplaceLine,
 }) {
   const { tables, bills, billItems, config, refreshAll } = useApp();
   const table = tables.find((t) => t.table_id === selectedTableId) || null;
-  const bill = table?.active_bill_id ? bills.find((b) => b.bill_id === table.active_bill_id) : null;
+  // For takeaway/delivery: bill is referenced directly by activeBillId (no table)
+  const bill = activeBillId
+    ? bills.find((b) => b.bill_id === activeBillId)
+    : (table?.active_bill_id ? bills.find((b) => b.bill_id === table.active_bill_id) : null);
   const items = useMemo(
     () => bill ? billItems.filter((x) => x.bill_id === bill.bill_id) : [],
     [bill, billItems]
   );
 
   const [pendingVoid, setPendingVoid] = useState(null);
+  const [pendingVoidBill, setPendingVoidBill] = useState(false);
   const [discountPctInput, setDiscountPctInput] = useState('');
   const [pendingDiscount, setPendingDiscount] = useState(null);
   const [pendingOverride, setPendingOverride] = useState(null); // { line, new_price }
   const [overrideEditor, setOverrideEditor] = useState(null);   // { line, draft }
+  const [pendingReduce, setPendingReduce] = useState(null);     // { line, new_qty }
+  const [reduceEditor, setReduceEditor] = useState(null);       // { line, draft }
+  const [lineMenuFor, setLineMenuFor] = useState(null);         // line whose menu is open
 
   const totals = useMemo(() => computeBill(items, {
     discount_pct: bill?.discount_pct || 0,
@@ -148,19 +156,29 @@ export default function OrderPanel({
                   </div>
                   <div className="text-right">
                     <div className="font-medium">{formatPKR(lineTotal(it))}</div>
-                    <div className="flex gap-2 justify-end">
+                    <div className="relative">
                       <button
-                        onClick={() => setOverrideEditor({ line: it, draft: String(it.unit_price) })}
-                        className="text-xs text-amber-300 hover:text-amber-200"
+                        onClick={() => setLineMenuFor(lineMenuFor === it.line_id ? null : it.line_id)}
+                        className="text-xs text-gray-300 hover:text-white px-2 py-0.5 rounded hover:bg-paolas-border"
                       >
-                        override
+                        actions ▾
                       </button>
-                      <button
-                        onClick={() => setPendingVoid(it)}
-                        className="text-xs text-red-400 hover:text-red-300"
-                      >
-                        void
-                      </button>
+                      {lineMenuFor === it.line_id && (
+                        <div className="absolute right-0 z-10 mt-1 w-40 bg-paolas-bg border border-paolas-border rounded-lg shadow-xl text-left">
+                          <LineMenuItem onClick={() => { setReduceEditor({ line: it, draft: String(it.qty) }); setLineMenuFor(null); }}>
+                            Reduce qty
+                          </LineMenuItem>
+                          <LineMenuItem onClick={() => { onReplaceLine?.(it); setLineMenuFor(null); }}>
+                            Replace item
+                          </LineMenuItem>
+                          <LineMenuItem onClick={() => { setOverrideEditor({ line: it, draft: String(it.unit_price) }); setLineMenuFor(null); }}>
+                            Override price
+                          </LineMenuItem>
+                          <LineMenuItem danger onClick={() => { setPendingVoid(it); setLineMenuFor(null); }}>
+                            Void
+                          </LineMenuItem>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -184,7 +202,7 @@ export default function OrderPanel({
         <div className="grid grid-cols-2 gap-2 pt-2">
           <button
             onClick={onOpenMenu}
-            disabled={!table}
+            disabled={!bill && !table}
             className="min-h-tap rounded-xl bg-paolas-border text-sm font-medium"
           >
             + Add items
@@ -218,11 +236,23 @@ export default function OrderPanel({
             Split
           </button>
           <button
-            onClick={onPay}
+            onClick={async () => {
+              if (!bill) return;
+              if (bill.status !== STATES.DUE) await saveBill({ ...bill, status: STATES.DUE });
+              await refreshAll();
+              onPay();
+            }}
             disabled={!bill || items.length === 0}
             className="min-h-tap rounded-xl bg-paolas-accent text-sm font-semibold disabled:opacity-40"
           >
             Pay & close
+          </button>
+          <button
+            onClick={() => setPendingVoidBill(true)}
+            disabled={!bill}
+            className="col-span-2 min-h-tap rounded-xl bg-red-900/40 border border-red-700/60 text-red-200 text-sm disabled:opacity-40"
+          >
+            Void whole bill
           </button>
         </div>
       </div>
@@ -233,15 +263,85 @@ export default function OrderPanel({
         action="void_item"
         bill_id={bill?.bill_id || ''}
         detail={pendingVoid ? `${pendingVoid.qty}× ${pendingVoid.item_name}` : ''}
+        requireReason
         onApproved={applyVoid}
+      />
+      <ManagerPinModal
+        open={pendingVoidBill}
+        onClose={() => setPendingVoidBill(false)}
+        action="void_bill"
+        bill_id={bill?.bill_id || ''}
+        detail={bill ? `Void entire bill (${items.length} item${items.length === 1 ? '' : 's'}, ${formatPKR(totals.total)})` : ''}
+        requireReason
+        onApproved={async () => {
+          if (!bill) return;
+          for (const it of items) await deleteBillItem(it.line_id);
+          await saveBill({ ...bill, status: STATES.VOID, time_closed: new Date().toISOString() });
+          if (table) await updateTable({ ...table, status: 'free', active_bill_id: null });
+          setPendingVoidBill(false);
+          await refreshAll();
+        }}
       />
       <ManagerPinModal
         open={pendingDiscount !== null}
         onClose={() => setPendingDiscount(null)}
         action="apply_discount"
         bill_id={bill?.bill_id || ''}
-        detail={pendingDiscount ? `${pendingDiscount}% on ${table.label}` : ''}
+        detail={pendingDiscount ? `${pendingDiscount}% on ${table?.label || bill?.bill_id}` : ''}
         onApproved={applyDiscount}
+      />
+
+      {/* Reduce qty editor */}
+      {reduceEditor && (
+        <div className="fixed inset-0 z-30 flex items-end md:items-center justify-center" onClick={() => setReduceEditor(null)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div onClick={(e) => e.stopPropagation()} className="relative z-10 bg-paolas-panel border border-paolas-border rounded-t-2xl md:rounded-2xl w-full md:max-w-sm p-5">
+            <h3 className="text-lg font-semibold mb-2">Reduce quantity</h3>
+            <p className="text-sm text-gray-400 mb-3">{reduceEditor.line.item_name} (currently {reduceEditor.line.qty})</p>
+            <label className="block text-xs text-gray-400">New qty</label>
+            <input
+              type="number"
+              min="0"
+              value={reduceEditor.draft}
+              onChange={(e) => setReduceEditor((o) => ({ ...o, draft: e.target.value }))}
+              className="mt-1 w-full min-h-tap px-3 py-2 rounded-lg bg-paolas-bg border border-paolas-border"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setReduceEditor(null)} className="min-h-tap px-4 py-2 rounded-lg bg-paolas-border">Cancel</button>
+              <button
+                onClick={() => {
+                  const q = Math.max(0, Math.floor(Number(reduceEditor.draft) || 0));
+                  if (q >= reduceEditor.line.qty) { setReduceEditor(null); return; }
+                  setPendingReduce({ line: reduceEditor.line, new_qty: q });
+                }}
+                className="min-h-tap px-4 py-2 rounded-lg bg-paolas-accent font-semibold"
+              >
+                Approve (manager)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ManagerPinModal
+        open={!!pendingReduce}
+        onClose={() => { setPendingReduce(null); setReduceEditor(null); }}
+        action="reduce_item"
+        bill_id={bill?.bill_id || ''}
+        detail={pendingReduce ? `${pendingReduce.line.item_name}: ${pendingReduce.line.qty} → ${pendingReduce.new_qty}` : ''}
+        requireReason
+        onApproved={async () => {
+          if (!pendingReduce) return;
+          if (pendingReduce.new_qty === 0) {
+            await deleteBillItem(pendingReduce.line.line_id);
+          } else {
+            const next = { ...pendingReduce.line, qty: pendingReduce.new_qty };
+            next.line_total = lineTotal(next);
+            await saveBillItem(next);
+          }
+          setPendingReduce(null);
+          setReduceEditor(null);
+          await refreshAll();
+        }}
       />
 
       {/* Price override editor: type new price, then approve via manager PIN */}
@@ -290,6 +390,17 @@ export default function OrderPanel({
         }}
       />
     </aside>
+  );
+}
+
+function LineMenuItem({ children, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 text-xs hover:bg-paolas-border ${danger ? 'text-red-300' : 'text-gray-200'}`}
+    >
+      {children}
+    </button>
   );
 }
 

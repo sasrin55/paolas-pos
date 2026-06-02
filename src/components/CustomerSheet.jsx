@@ -26,7 +26,7 @@ export default function CustomerSheet({ open, onClose, bill }) {
   }, [phone]);
 
   const visitsFor = (cid) =>
-    bills.filter((b) => b.customer_id === cid && b.status === 'closed')
+    bills.filter((b) => b.customer_id === cid && b.status === 'settled')
          .sort((a, b) => (b.date + b.time_closed).localeCompare(a.date + a.time_closed));
 
   const attach = async (customer) => {

@@ -13,10 +13,13 @@ import EODReport from './components/EODReport.jsx';
 import SignIn from './components/SignIn.jsx';
 import CustomerSheet from './components/CustomerSheet.jsx';
 import {
-  saveBill, saveBillItem, updateTable,
+  saveBill, saveBillItem, deleteBillItem, updateTable,
 } from './data-layer/index.js';
+import ManagerPinModal from './components/ManagerPinModal.jsx';
+import BillHistorySheet from './components/BillHistorySheet.jsx';
 import { newBillId, newLineId, todayISO, nowISO } from './lib/id.js';
 import { lineTotal } from './lib/bill-math.js';
+import { STATES, advanceOnItem } from './lib/lifecycle.js';
 
 export default function App() {
   return (
@@ -27,7 +30,7 @@ export default function App() {
 }
 
 function Shell() {
-  const { ready, currentUser, tables, bills, refreshAll, rtl } = useApp();
+  const { ready, currentUser, tables, bills, config, refreshAll, rtl } = useApp();
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [view, setView] = useState('floor'); // floor | menu
   const [pickingItem, setPickingItem] = useState(null);
@@ -37,6 +40,10 @@ function Shell() {
   const [eodOpen, setEodOpen] = useState(false);
   const [tmSheet, setTmSheet] = useState({ open: false, mode: null, sourceTable: null });
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [replaceContext, setReplaceContext] = useState(null); // line being replaced
+  const [pendingReplace, setPendingReplace] = useState(null); // { line, newItem }
+  const [activeNonTableBillId, setActiveNonTableBillId] = useState(null); // for takeaway/delivery
 
   useEffect(() => {
     document.documentElement.dir = rtl ? 'rtl' : 'ltr';
@@ -48,13 +55,16 @@ function Shell() {
   if (!currentUser) return <SignIn />;
 
   const selectedTable = tables.find((t) => t.table_id === selectedTableId) || null;
-  const activeBill = selectedTable?.active_bill_id ? bills.find((b) => b.bill_id === selectedTable.active_bill_id) : null;
+  const activeBill = activeNonTableBillId
+    ? bills.find((b) => b.bill_id === activeNonTableBillId)
+    : (selectedTable?.active_bill_id ? bills.find((b) => b.bill_id === selectedTable.active_bill_id) : null);
 
   const ensureBill = async () => {
     if (!selectedTable) return null;
     if (activeBill) return activeBill;
     const b = {
       bill_id: newBillId(),
+      outlet_id: config.outlet_id,
       date: todayISO(),
       time_opened: nowISO(),
       time_closed: '',
@@ -66,7 +76,8 @@ function Shell() {
       server_name: currentUser.name,
       discount_pct: 0,
       comp_amount: 0,
-      status: 'open',
+      tip_pkr: 0,
+      status: STATES.NEW,
     };
     await saveBill(b);
     await updateTable({ ...selectedTable, status: 'occupied', active_bill_id: b.bill_id });
@@ -75,12 +86,41 @@ function Shell() {
   };
 
   const onPickMenuItem = (item) => {
+    // replace mode: stage the new item, then go through manager PIN
+    if (replaceContext) {
+      setPendingReplace({ line: replaceContext, newItem: item });
+      return;
+    }
     if (!item.modifier_group_ids?.length) {
-      // no modifiers — add a qty-1 line immediately
       addLine(item, { qty: 1, modifiers: [], note: '' });
     } else {
       setPickingItem(item);
     }
+  };
+
+  const startNonTableOrder = async (mode) => {
+    const b = {
+      bill_id: newBillId(),
+      outlet_id: config.outlet_id,
+      date: todayISO(),
+      time_opened: nowISO(),
+      time_closed: '',
+      table: '',
+      table_label: mode === 'takeaway' ? 'Takeaway' : 'Delivery',
+      pax: 0,
+      service_mode: mode,
+      server_id: currentUser.user_id,
+      server_name: currentUser.name,
+      discount_pct: 0,
+      comp_amount: 0,
+      tip_pkr: 0,
+      status: STATES.NEW,
+    };
+    await saveBill(b);
+    setSelectedTableId(null);
+    setActiveNonTableBillId(b.bill_id);
+    setView('menu');
+    await refreshAll();
   };
 
   const addLine = async (menuItem, picked) => {
@@ -89,6 +129,7 @@ function Shell() {
     const line = {
       line_id: newLineId(),
       bill_id: b.bill_id,
+      outlet_id: b.outlet_id,
       item_id: menuItem.item_id,
       item_name: menuItem.name,
       qty: picked.qty,
@@ -101,6 +142,10 @@ function Shell() {
     };
     line.line_total = lineTotal(line);
     await saveBillItem(line);
+    // advance new → running on first line
+    if (b.status === STATES.NEW) {
+      await saveBill({ ...b, status: advanceOnItem(b.status) });
+    }
     await refreshAll();
   };
 
@@ -121,9 +166,12 @@ function Shell() {
               ? <MenuGrid onPick={onPickMenuItem} />
               : <FloorView
                   selectedTableId={selectedTableId}
-                  onSelectTable={setSelectedTableId}
+                  onSelectTable={(id) => { setActiveNonTableBillId(null); setSelectedTableId(id); }}
                   onTransferRequest={(t) => setTmSheet({ open: true, mode: 'transfer', sourceTable: t })}
                   onMergeRequest={(t) => setTmSheet({ open: true, mode: 'merge', sourceTable: t })}
+                  onStartTakeaway={() => startNonTableOrder('takeaway')}
+                  onStartDelivery={() => startNonTableOrder('delivery')}
+                  onOpenHistory={() => setHistoryOpen(true)}
                 />}
           </div>
           <div className="flex-1 md:hidden">
@@ -131,19 +179,24 @@ function Shell() {
               ? <MenuGrid onPick={onPickMenuItem} />
               : <FloorView
                   selectedTableId={selectedTableId}
-                  onSelectTable={setSelectedTableId}
+                  onSelectTable={(id) => { setActiveNonTableBillId(null); setSelectedTableId(id); }}
                   onTransferRequest={(t) => setTmSheet({ open: true, mode: 'transfer', sourceTable: t })}
                   onMergeRequest={(t) => setTmSheet({ open: true, mode: 'merge', sourceTable: t })}
+                  onStartTakeaway={() => startNonTableOrder('takeaway')}
+                  onStartDelivery={() => startNonTableOrder('delivery')}
+                  onOpenHistory={() => setHistoryOpen(true)}
                 />}
           </div>
         </div>
 
         <OrderPanel
           selectedTableId={selectedTableId}
+          activeBillId={activeNonTableBillId}
           onOpenMenu={() => setView('menu')}
           onSplit={() => setSplitOpen(true)}
           onPay={() => setPayOpen(true)}
           onAttachCustomer={() => setCustomerOpen(true)}
+          onReplaceLine={(line) => { setReplaceContext(line); setView('menu'); }}
         />
       </main>
 
@@ -165,6 +218,7 @@ function Shell() {
           setPayOpen(false);
           setView('floor');
           setSelectedTableId(null);
+          setActiveNonTableBillId(null);
         }}
       />
       <TransferMergeSheet
@@ -176,6 +230,26 @@ function Shell() {
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <EODReport open={eodOpen} onClose={() => setEodOpen(false)} />
       <CustomerSheet open={customerOpen} onClose={() => setCustomerOpen(false)} bill={activeBill} />
+      <BillHistorySheet open={historyOpen} onClose={() => setHistoryOpen(false)} />
+
+      {/* Replace flow: approve via manager PIN then swap the line */}
+      <ManagerPinModal
+        open={!!pendingReplace}
+        onClose={() => { setPendingReplace(null); setReplaceContext(null); }}
+        action="replace_item"
+        bill_id={pendingReplace?.line?.bill_id || ''}
+        detail={pendingReplace ? `${pendingReplace.line.item_name} → ${pendingReplace.newItem.name}` : ''}
+        requireReason
+        onApproved={async () => {
+          if (!pendingReplace) return;
+          await deleteBillItem(pendingReplace.line.line_id);
+          await addLine(pendingReplace.newItem, { qty: pendingReplace.line.qty, modifiers: [], note: pendingReplace.line.note });
+          setPendingReplace(null);
+          setReplaceContext(null);
+          setView('floor');
+          await refreshAll();
+        }}
+      />
     </div>
   );
 }

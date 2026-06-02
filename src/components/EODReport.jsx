@@ -9,7 +9,7 @@ import { nowISO, todayISO } from '../lib/id.js';
 export default function EODReport({ open, onClose }) {
   const { bills, billItems, payments, auditLog, config, currentUser } = useApp();
   const today = todayISO();
-  const todays = useMemo(() => bills.filter((b) => b.date === today && b.status === 'closed'), [bills, today]);
+  const todays = useMemo(() => bills.filter((b) => b.date === today && b.status === 'settled'), [bills, today]);
   const todayBillIds = new Set(todays.map((b) => b.bill_id));
   const todayPayments = payments.filter((p) => todayBillIds.has(p.bill_id));
 

@@ -6,13 +6,7 @@
 // per-tender weighted by amount. This is the safest interpretation of PRA
 // rules until Raahim confirms otherwise — flag if PRA wants something else.
 
-const TENDER_TAX_KEY = {
-  cash:      'cash_rate_pct',
-  card:      'card_rate_pct',
-  easypaisa: 'wallet_rate_pct',
-  jazzcash:  'wallet_rate_pct',
-  raast:     'wallet_rate_pct',
-};
+import { TENDER_TAX_KEY } from './config.js';
 
 export function lineTotal(item) {
   const mods = (item.modifiers || []).reduce((s, m) => s + (m.price_delta_pkr || 0), 0);
