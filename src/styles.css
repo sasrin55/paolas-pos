@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media print {
+  html, body, #root { background: #fff !important; color: #000 !important; height: auto !important; }
+  body * { visibility: hidden; }
+  #eod-print, #eod-print * { visibility: visible; color: #000 !important; }
+  #eod-print { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; }
+}
