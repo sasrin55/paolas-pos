@@ -30,6 +30,10 @@ export const DEFAULT_CONFIG = {
   // manager and ManagerPinModal auto-approves every gate (still audit-logged
   // with reason "(pins disabled)"). Flip OFF before going live.
   auth_disabled: true,
+  // Demo data: customers, closed bills across yesterday + today, an open
+  // table mid-order, audit entries. One-shot on first boot via meta flag.
+  // Set false (or run with a fresh IndexedDB) once you're using real data.
+  demo_data: true,
   // Real-time peer sync (Phase 12). Run `npm run sync` on the cashier till,
   // then paste ws://<till-ip>:3001 here on the handhelds.
   sync_url: '',

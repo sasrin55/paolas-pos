@@ -58,6 +58,27 @@ export default function SettingsSheet({ open, onClose }) {
           <Field type="number" label="Rate %" value={local.service_charge.rate_pct ?? ''} onChange={(v) => update('service_charge.rate_pct', num(v))} />
         </Section>
 
+        <Section title="Demo data">
+          <Toggle
+            label="Load demo data on next fresh boot"
+            value={!!local.demo_data}
+            onChange={(v) => update('demo_data', v)}
+          />
+          <button
+            onClick={async () => {
+              if (!confirm('Wipe IndexedDB and reload? You will lose any real data not synced to Sheets.')) return;
+              try { indexedDB.deleteDatabase('paolas_pos'); } catch {}
+              location.reload();
+            }}
+            className="min-h-tap px-3 py-2 rounded-lg bg-red-900/40 border border-red-700/40 text-red-200 text-sm"
+          >
+            Wipe local data and reload (re-seeds demo)
+          </button>
+          <p className="text-xs text-gray-500">
+            On a freshly seeded install with <code>demo_data</code> on, the POS loads 5 demo customers, ~8 closed bills across yesterday + today, one open table mid-order, and a few audit entries — so EOD, history, customer search, and house-accounts all have something to show.
+          </p>
+        </Section>
+
         <Section title="Authentication">
           <Toggle
             label="Disable PINs (dev mode — auto-sign-in + auto-approve manager gates)"

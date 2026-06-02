@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import * as dl from '../data-layer/index.js';
 import { DEFAULT_CONFIG, mergeConfig } from '../lib/config.js';
 import { buildSeed } from '../data/seed.js';
+import { buildDemo } from '../data/demo.js';
 import { verifyPin } from '../lib/pin.js';
 import { setLocale, getLocale, isRTL, onLocaleChange } from '../lib/i18n.js';
 
@@ -64,6 +65,11 @@ export function AppProvider({ children }) {
       if (saved?.value?.auth_disabled === undefined) {
         cfg.auth_disabled = true;
         await dl.setMeta('config', cfg);
+      }
+      // Optional demo data, also one-shot. The flag lives in config so it
+      // appears in Settings — turn it off and clear IndexedDB to start fresh.
+      if (cfg.demo_data) {
+        await dl.seedDemoIfEmpty(buildDemo());
       }
       setConfig(cfg);
       if (cfg.locale) { setLocale(cfg.locale); setLocaleState(cfg.locale); }

@@ -158,6 +158,25 @@ export async function setMeta(key, value) {
   await ls.put('meta', { key, value });
 }
 
+// Demo data bootstrap. Idempotent via the `demo_seeded` meta key. Tables
+// with an open demo bill get patched to occupied + active_bill_id.
+export async function seedDemoIfEmpty(demo) {
+  const flag = await ls.get('meta', 'demo_seeded');
+  if (flag?.value) return;
+  await ls.putMany('customers', demo.customers);
+  await ls.putMany('bills',     demo.bills);
+  await ls.putMany('billItems', demo.billItems);
+  await ls.putMany('payments',  demo.payments);
+  for (const entry of demo.auditLog) {
+    await ls.put('auditLog', entry);
+  }
+  if (demo.openTablePatch) {
+    const t = await ls.get('tables', demo.openTablePatch.table_id);
+    if (t) await ls.put('tables', { ...t, ...demo.openTablePatch });
+  }
+  await ls.put('meta', { key: 'demo_seeded', value: new Date().toISOString() });
+}
+
 // ----- seed bootstrap -----
 export async function seedIfEmpty(seed) {
   const seeded = await ls.get('meta', 'seeded');
