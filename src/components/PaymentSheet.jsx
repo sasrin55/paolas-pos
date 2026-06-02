@@ -5,7 +5,7 @@ import { formatPKR } from '../lib/format.js';
 import { computeBill } from '../lib/bill-math.js';
 import { TENDER_TYPES, TENDER_LABEL } from '../lib/config.js';
 import { newPaymentId, nowISO } from '../lib/id.js';
-import { saveBill, savePayment, updateTable, appendAudit } from '../data-layer/index.js';
+import { saveBill, savePayment, updateTable, appendAudit, saveCustomer, getCustomer } from '../data-layer/index.js';
 import { printReceipt } from '../lib/print.js';
 
 export default function PaymentSheet({ open, onClose, bill, onClosed }) {
@@ -82,6 +82,27 @@ export default function PaymentSheet({ open, onClose, bill, onClosed }) {
       bill_id: bill.bill_id,
       detail: `${formatPKR(totalsPre.total)} via ${usedSplits.filter((s) => s.amount_pkr > 0).map((s) => s.tender_type).join('+')}`,
     });
+
+    // Update the customer record (visit count, spend, loyalty) if attached.
+    if (closed.customer_id) {
+      const existing = await getCustomer(closed.customer_id);
+      const earned = config.loyalty?.enabled
+        ? Math.floor(totalsPre.total * (config.loyalty.points_per_pkr || 0))
+        : 0;
+      const next = {
+        customer_id: closed.customer_id,
+        phone: existing?.phone || closed.customer_phone || '',
+        name: existing?.name || closed.customer_name || '',
+        first_visit: existing?.first_visit || nowISO(),
+        last_visit: nowISO(),
+        visit_count: (existing?.visit_count || 0) + 1,
+        total_spend_pkr: (existing?.total_spend_pkr || 0) + totalsPre.total,
+        tags: existing?.tags || '',
+        notes: existing?.notes || '',
+        loyalty_points: (existing?.loyalty_points || 0) + earned,
+      };
+      await saveCustomer(next);
+    }
 
     printReceipt({
       bill: closed,

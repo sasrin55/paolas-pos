@@ -2,7 +2,7 @@
 // mirror the Google Sheet tabs 1:1 so the sync adapter can map row-for-row.
 
 const DB_NAME = 'paolas_pos';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   menu:           { keyPath: 'item_id' },
@@ -10,6 +10,8 @@ export const STORES = {
   modifiers:      { keyPath: 'modifier_id' },
   tables:         { keyPath: 'table_id' },
   users:          { keyPath: 'user_id' },
+  customers:      { keyPath: 'customer_id' },
+  shifts:         { keyPath: 'shift_id' },
   bills:          { keyPath: 'bill_id' },
   billItems:      { keyPath: 'line_id' },
   payments:       { keyPath: 'payment_id' },

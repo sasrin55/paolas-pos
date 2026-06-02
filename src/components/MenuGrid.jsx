@@ -90,16 +90,30 @@ function MenuButton({ item, onPick, onLongPress }) {
       onTouchStart={startPress}
       onTouchEnd={(e) => { e.preventDefault(); endPress(true); }}
       disabled={!item.available}
-      className={`min-h-tap rounded-xl border p-3 text-left active:scale-[0.98] ${
+      className={`min-h-tap rounded-xl border overflow-hidden text-left active:scale-[0.98] ${
         item.available
           ? 'bg-paolas-panel border-paolas-border'
           : 'bg-paolas-panel border-paolas-border opacity-40'
       }`}
     >
-      <div className="text-base font-medium leading-tight">{item.name}</div>
-      <div className="mt-2 flex items-baseline justify-between">
-        <span className="text-sm text-gray-300">{formatPKR(item.price_pkr)}</span>
-        {!item.available && <span className="text-[10px] uppercase text-red-400">86</span>}
+      {item.image_url ? (
+        <div className="aspect-[16/10] bg-paolas-bg overflow-hidden">
+          <img
+            src={item.image_url}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        </div>
+      ) : null}
+      <div className="p-3">
+        <div className="text-base font-medium leading-tight line-clamp-1">{item.name}</div>
+        <div className="mt-2 flex items-baseline justify-between">
+          <span className="text-sm text-gray-300">{formatPKR(item.price_pkr)}</span>
+          {!item.available && <span className="text-[10px] uppercase text-red-400">86</span>}
+        </div>
       </div>
     </button>
   );

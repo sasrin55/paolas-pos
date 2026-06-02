@@ -58,6 +58,45 @@ export default function SettingsSheet({ open, onClose }) {
           <Field type="number" label="Rate %" value={local.service_charge.rate_pct ?? ''} onChange={(v) => update('service_charge.rate_pct', num(v))} />
         </Section>
 
+        <Section title="Language">
+          <label className="block">
+            <span className="text-xs text-gray-400">UI language</span>
+            <select
+              value={local.locale || 'en'}
+              onChange={(e) => update('locale', e.target.value)}
+              className="mt-1 w-full min-h-tap px-3 py-2 rounded-lg bg-paolas-bg border border-paolas-border"
+            >
+              <option value="en">English</option>
+              <option value="ur" disabled>اردو (strings file pending)</option>
+            </select>
+          </label>
+          <p className="text-xs text-gray-500">
+            i18n scaffold is in place. Drop <code>src/lib/strings/ur.json</code> in and the Urdu option enables itself.
+          </p>
+        </Section>
+
+        <Section title="Real-time multi-device sync (Phase 12)">
+          <Field
+            label="LAN sync server URL"
+            value={local.sync_url || ''}
+            onChange={(v) => update('sync_url', v)}
+          />
+          <p className="text-xs text-gray-500">
+            Run <code>npm run sync</code> on the cashier till, then paste <code>ws://{'<till-ip>'}:3001</code> here on every handheld.
+            When connected, table/order/menu updates flow live between devices.
+          </p>
+        </Section>
+
+        <Section title="Loyalty">
+          <Toggle label="Enable loyalty points" value={local.loyalty?.enabled} onChange={(v) => update('loyalty.enabled', v)} />
+          <Field
+            type="number"
+            label="Points per PKR (e.g. 0.01 = 1 point per Rs 100)"
+            value={local.loyalty?.points_per_pkr ?? ''}
+            onChange={(v) => update('loyalty.points_per_pkr', num(v))}
+          />
+        </Section>
+
         <Section title="Sheets sync (Apps Script web app)">
           <Field label="Endpoint URL"  value={local.sheets.endpoint}      onChange={(v) => update('sheets.endpoint', v)} />
           <Field label="Shared secret" value={local.sheets.shared_secret} onChange={(v) => update('sheets.shared_secret', v)} />

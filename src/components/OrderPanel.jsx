@@ -10,7 +10,7 @@ import ManagerPinModal from './ManagerPinModal.jsx';
 import { printKOT } from '../lib/print.js';
 
 export default function OrderPanel({
-  selectedTableId, onOpenMenu, onSplit, onPay,
+  selectedTableId, onOpenMenu, onSplit, onPay, onAttachCustomer,
 }) {
   const { tables, bills, billItems, config, refreshAll } = useApp();
   const table = tables.find((t) => t.table_id === selectedTableId) || null;
@@ -23,6 +23,8 @@ export default function OrderPanel({
   const [pendingVoid, setPendingVoid] = useState(null);
   const [discountPctInput, setDiscountPctInput] = useState('');
   const [pendingDiscount, setPendingDiscount] = useState(null);
+  const [pendingOverride, setPendingOverride] = useState(null); // { line, new_price }
+  const [overrideEditor, setOverrideEditor] = useState(null);   // { line, draft }
 
   const totals = useMemo(() => computeBill(items, {
     discount_pct: bill?.discount_pct || 0,
@@ -93,7 +95,7 @@ export default function OrderPanel({
           <h2 className="text-lg font-semibold">{table.label}</h2>
           {bill && <span className="text-[11px] text-gray-400">{bill.bill_id}</span>}
         </div>
-        <div className="mt-2 flex items-center gap-2 text-xs">
+        <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
           <span className="text-gray-400">{table.zone}</span>
           {bill ? (
             <>
@@ -109,6 +111,16 @@ export default function OrderPanel({
             <span className="text-gray-400">no open order</span>
           )}
         </div>
+        {bill && (
+          <button
+            onClick={onAttachCustomer}
+            className="mt-2 w-full min-h-tap text-left text-xs px-3 py-2 rounded-lg bg-paolas-border/60 hover:bg-paolas-border"
+          >
+            {bill.customer_id
+              ? <span>👤 {bill.customer_name || bill.customer_phone} <span className="text-gray-400 ml-1">(change)</span></span>
+              : <span className="text-gray-300">+ Attach customer (phone)</span>}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -129,16 +141,27 @@ export default function OrderPanel({
                       </div>
                     )}
                     {it.note && <div className="text-xs italic text-gray-400">“{it.note}”</div>}
+                    {it.price_overridden && (
+                      <div className="text-[10px] uppercase text-amber-300 mt-1">price overridden</div>
+                    )}
                     {!it.sent_to_kitchen && <div className="text-[10px] uppercase text-amber-400 mt-1">new</div>}
                   </div>
                   <div className="text-right">
                     <div className="font-medium">{formatPKR(lineTotal(it))}</div>
-                    <button
-                      onClick={() => setPendingVoid(it)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      void
-                    </button>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setOverrideEditor({ line: it, draft: String(it.unit_price) })}
+                        className="text-xs text-amber-300 hover:text-amber-200"
+                      >
+                        override
+                      </button>
+                      <button
+                        onClick={() => setPendingVoid(it)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        void
+                      </button>
+                    </div>
                   </div>
                 </div>
               </li>
@@ -219,6 +242,52 @@ export default function OrderPanel({
         bill_id={bill?.bill_id || ''}
         detail={pendingDiscount ? `${pendingDiscount}% on ${table.label}` : ''}
         onApproved={applyDiscount}
+      />
+
+      {/* Price override editor: type new price, then approve via manager PIN */}
+      {overrideEditor && (
+        <div className="fixed inset-0 z-30 flex items-end md:items-center justify-center" onClick={() => setOverrideEditor(null)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div onClick={(e) => e.stopPropagation()} className="relative z-10 bg-paolas-panel border border-paolas-border rounded-t-2xl md:rounded-2xl w-full md:max-w-sm p-5">
+            <h3 className="text-lg font-semibold mb-2">Override price</h3>
+            <p className="text-sm text-gray-400 mb-3">{overrideEditor.line.qty}× {overrideEditor.line.item_name}</p>
+            <label className="block text-xs text-gray-400">New unit price (PKR)</label>
+            <input
+              type="number"
+              value={overrideEditor.draft}
+              onChange={(e) => setOverrideEditor((o) => ({ ...o, draft: e.target.value }))}
+              className="mt-1 w-full min-h-tap px-3 py-2 rounded-lg bg-paolas-bg border border-paolas-border"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setOverrideEditor(null)} className="min-h-tap px-4 py-2 rounded-lg bg-paolas-border">Cancel</button>
+              <button
+                onClick={() => {
+                  const p = Math.max(0, Number(overrideEditor.draft) || 0);
+                  setPendingOverride({ line: overrideEditor.line, new_price: p });
+                }}
+                className="min-h-tap px-4 py-2 rounded-lg bg-paolas-accent font-semibold"
+              >
+                Approve (manager)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ManagerPinModal
+        open={!!pendingOverride}
+        onClose={() => { setPendingOverride(null); setOverrideEditor(null); }}
+        action="price_override"
+        bill_id={bill?.bill_id || ''}
+        detail={pendingOverride ? `${pendingOverride.line.item_name}: ${formatPKR(pendingOverride.line.unit_price)} → ${formatPKR(pendingOverride.new_price)}` : ''}
+        onApproved={async () => {
+          if (!pendingOverride) return;
+          const next = { ...pendingOverride.line, unit_price: pendingOverride.new_price, price_overridden: true };
+          next.line_total = lineTotal(next);
+          await saveBillItem(next);
+          setPendingOverride(null);
+          setOverrideEditor(null);
+          await refreshAll();
+        }}
       />
     </aside>
   );

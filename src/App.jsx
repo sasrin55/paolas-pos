@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './state/AppContext.jsx';
 import Header from './components/Header.jsx';
 import FloorView from './components/FloorView.jsx';
@@ -11,6 +11,7 @@ import TransferMergeSheet from './components/TransferMergeSheet.jsx';
 import SettingsSheet from './components/SettingsSheet.jsx';
 import EODReport from './components/EODReport.jsx';
 import SignIn from './components/SignIn.jsx';
+import CustomerSheet from './components/CustomerSheet.jsx';
 import {
   saveBill, saveBillItem, updateTable,
 } from './data-layer/index.js';
@@ -26,7 +27,7 @@ export default function App() {
 }
 
 function Shell() {
-  const { ready, currentUser, tables, bills, refreshAll } = useApp();
+  const { ready, currentUser, tables, bills, refreshAll, rtl } = useApp();
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [view, setView] = useState('floor'); // floor | menu
   const [pickingItem, setPickingItem] = useState(null);
@@ -35,6 +36,11 @@ function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [eodOpen, setEodOpen] = useState(false);
   const [tmSheet, setTmSheet] = useState({ open: false, mode: null, sourceTable: null });
+  const [customerOpen, setCustomerOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dir = rtl ? 'rtl' : 'ltr';
+  }, [rtl]);
 
   if (!ready) {
     return <div className="h-full flex items-center justify-center text-gray-400">Loading…</div>;
@@ -137,6 +143,7 @@ function Shell() {
           onOpenMenu={() => setView('menu')}
           onSplit={() => setSplitOpen(true)}
           onPay={() => setPayOpen(true)}
+          onAttachCustomer={() => setCustomerOpen(true)}
         />
       </main>
 
@@ -168,6 +175,7 @@ function Shell() {
       />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <EODReport open={eodOpen} onClose={() => setEodOpen(false)} />
+      <CustomerSheet open={customerOpen} onClose={() => setCustomerOpen(false)} bill={activeBill} />
     </div>
   );
 }

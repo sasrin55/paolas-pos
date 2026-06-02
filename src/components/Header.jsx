@@ -1,7 +1,7 @@
 import { useApp } from '../state/AppContext.jsx';
 
 export default function Header({ onOpenSettings, onOpenEOD }) {
-  const { sync, currentUser, signOut } = useApp();
+  const { sync, realtime, config, currentUser, signOut } = useApp();
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
   const dateStr = now.toLocaleDateString('en-PK', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -10,6 +10,7 @@ export default function Header({ onOpenSettings, onOpenEOD }) {
     ? (sync.queued ? `Online · ${sync.queued} queued` : 'Online')
     : `Offline · ${sync.queued} queued`;
   const syncDot = sync.online ? (sync.queued ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-red-400';
+  const rtConfigured = !!config.sync_url;
 
   return (
     <header className="flex items-center justify-between px-4 md:px-6 py-3 bg-paolas-panel border-b border-paolas-border print:hidden">
@@ -25,6 +26,12 @@ export default function Header({ onOpenSettings, onOpenEOD }) {
           <span className={`w-2 h-2 rounded-full ${syncDot}`} />
           <span>{syncLabel}</span>
         </div>
+        {rtConfigured && (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-paolas-border text-xs" title={realtime.url}>
+            <span className={`w-2 h-2 rounded-full ${realtime.connected ? 'bg-sky-400' : 'bg-gray-500'}`} />
+            <span>{realtime.connected ? 'LAN sync' : 'LAN sync…'}</span>
+          </div>
+        )}
         <button
           onClick={onOpenEOD}
           className="hidden md:block min-h-tap px-3 py-2 rounded-lg bg-paolas-border text-sm hover:bg-paolas-border/70"
